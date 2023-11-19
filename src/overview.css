@@ -1,4 +1,4 @@
-.react-flow__node-custom {
+/*.react-flow__node-custom {
   font-size: 10px;
   width: 180px;
   background: #f5f5f6;
@@ -39,23 +39,34 @@
 .react-flow__node.annotation .react-flow__handle {
   display: none;
 }
+*/
 
-.custom-node__header {
-  padding: 8px 10px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.custom-node__body {
+.website_node_body {
+  background-color: white;
   padding: 10px;
+  border: 1px solid gray;
+  /*border-top: 1px solid darkgray;
+  border-bottom: 1px solid black;*/
+  border-radius: 5px;
+  box-sizing: border-box
 }
 
-.custom-node__select {
-  position: relative;
-  margin-bottom: 10px;
+.website_node_body.selected {
+  /*margin: -1px;*/
+  box-sizing: border-box;
+  border: 2px solid black;
+  border-radius: 5px;
 }
 
-.custom-node__select select {
-  width: 100%;
-  margin-top: 5px;
-  font-size: 10px;
+.website_node_img {
+  width: 400px;
+}
+
+.dotnode {
+  width: 2px;
+  height: 2px;
+  background-color: red;
+  border: none;
+  margin: none;
+  padding: none;
 }

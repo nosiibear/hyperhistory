@@ -1,5 +1,7 @@
 const links = document.querySelectorAll("a");
 console.log("links: ");
+console.log(links)
+console.log("link hrefs: ");
 console.log([...links].map((link) => link.href));
 console.log(location.href)
 console.log(typeof(location.href))
