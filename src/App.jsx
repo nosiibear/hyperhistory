@@ -87,15 +87,12 @@ const OverviewFlow = () => {
       return nodes.concat(newNode)
     })
   }
-
-  async function getRightChildren(){
-
-  }
     
   async function addNewNode(tab, prevNodeId) {
     const id = Date.now()
     let x = 0;
     let y = await getMaxYPos() + 100;
+    //let type = "webNodeRoot";
     let type = "webNode";
     console.log("resulting y: ")
     console.log(y)
@@ -112,7 +109,7 @@ const OverviewFlow = () => {
         } else {
           data = {...data, input: true}
         }
-        x = prevNode.position.x + prevNode.width + 40
+        x = prevNode.position.x + (prevNode.width) + 40 //+ tab.title.length * 10
         y = prevNode.position.y;
       }
       const newNode = {
@@ -243,6 +240,21 @@ const OverviewFlow = () => {
         })
       }
     });
+
+    if(message.updatedTabFavicon) {
+      setNodes((nodes) => {
+        const nodeId = tabs.get(message.updatedTabFavicon.tabId);
+        //return nodes
+        const newNodes = nodes.map((node) => {
+          if(node.id === `${nodeId}`) {
+            node.data = {...node.data, favIconUrl: `${message.updatedTabFavicon.favIconUrl}`}
+          }
+          return node
+        })
+        chrome.storage.local.set({nodes: newNodes})
+        return newNodes
+      })
+    }
   }, [])
 
   return (

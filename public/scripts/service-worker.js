@@ -68,6 +68,7 @@ chrome.tabs.onCreated.addListener((tab) => {
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if(tabId != '1963630908') {
   console.log("In service worker, tab changed")
   console.log("Everything not null:")
   for(const [key, value] of Object.entries(changeInfo)) {
@@ -77,7 +78,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   //console.log("id: " + tabId + ", changeInfo url: " + changeInfo.url)
   console.log("id: " + tabId + ", tab title: " + tab.title)
   console.log("id: " + tabId + ", tab url: " + tab.url)
-  if(tabId in tabs.keys()) {
+  //if(tabId in tabs.keys()) {
     if(changeInfo.url) {
       console.log("Tab changed url")
       if(changeInfo.url !== "chrome://newtab/" /*&& changeInfo.url in tabs.values()*/) {
@@ -88,7 +89,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
           console.log(tabs.get(tabId) === "chrome://newtab/")
           chrome.runtime.sendMessage({newTab: {tabId, url: tab.url, title: tab.title}})
           tabs.set(tab.id, tab.url);
-        } else {
+        } else /*if(!tabId in tabs.keys())*/ {
           console.log("Not changing from blank tab to first page, but should still update anyway")
           chrome.runtime.sendMessage({changedTab: {tabId, url: tab.url, title: tab.title}})
           tabs.set(tab.id, tab.url);
@@ -112,7 +113,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       console.log("Updating tab favIconUrl")
       chrome.runtime.sendMessage({updatedTabFavicon: {tabId, favIconUrl: tab.favIconUrl}})
     }
-  } else {
-    console.log("Changed tab was not created during session")
+  //} else {
+  //  console.log("Changed tab was not created during session")
+  //}
   }
 })
