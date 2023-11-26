@@ -8,16 +8,21 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   ReactFlowProvider,
-  useKeyPress
+  useKeyPress,
+  getRectOfNodes,
+  getTransformForBounds,
+  useReactFlow
 } from 'reactflow';
 import { saveAs } from 'file-saver';
+import { toPng } from 'html-to-image'
+import { BiMenu, BiSave, BiUpload, BiPause, BiRightArrow } from "react-icons/bi";
 
 /*import { nodes as initialNodes, edges as initialEdges } from './initial-elements';*/
 /*import CustomNode from './CustomNode';*/
 import WebNode from './nodes/WebNode.jsx'
-import WebNodeRoot from './nodes/WebNodeRoot.jsx'
 import WebNodeImage from './nodes/WebNodeImage.jsx'
 import DotNode from './nodes/DotNode.jsx'
+import Hamburger from './components/Hamburger.jsx';
 
 import 'reactflow/dist/style.css';
 import './overview.css';
@@ -31,7 +36,6 @@ console.log(windowHeight)
 
 const nodeTypes = {
   webNode: WebNode,
-  webNodeRoot: WebNodeRoot,
   webNodeImage: WebNodeImage,
   dotNode: DotNode
 };
@@ -39,6 +43,27 @@ const nodeTypes = {
 const minimapStyle = {
   height: 120,
 };
+
+function useWindowSize() {
+  const [size, setSize] = useState([window.innerHeight, window.innerWidth]);
+  useEffect(() => {
+    const handleResize = () => {
+      setSize([window.innerHeight, window.innerWidth]);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    }
+  }, [])
+  return size;
+}
+
+function downloadImage(dataUrl) {
+  const a = document.createElement('a');
+  a.setAttribute('download', 'reactflow.png');
+  a.setAttribute('href', dataUrl);
+  a.click();
+}
 
 const onInit = (reactFlowInstance) => console.log('flow loaded:', reactFlowInstance);
 
@@ -48,6 +73,8 @@ const OverviewFlow = () => {
   const spacePressed = useKeyPress('Space');
   const shiftPressed = useKeyPress('Shift');
   const [num, setNum] = useState(0);
+  const [hamburgerOpen, setHamburgerOpen] = useState(false);
+  const [height, width] = useWindowSize();
   
   let tabs = new Map()
 
@@ -75,6 +102,26 @@ const OverviewFlow = () => {
     saveAs(file, 'nodes.txt');
   };
 
+  const { getNodes } = useReactFlow();
+  const clickDownload = () => {
+    // we calculate a transform for the nodes so that all nodes are visible
+    // we then overwrite the transform of the `.react-flow__viewport` element
+    // with the style option of the html-to-image library
+    const nodesBounds = getRectOfNodes(getNodes());
+    const transform = getTransformForBounds(nodesBounds, imageWidth, imageHeight, 0.5, 2);
+
+    toPng(document.querySelector('.react-flow__viewport'), {
+      backgroundColor: '#1a365d',
+      width: imageWidth,
+      height: imageHeight,
+      style: {
+        width: imageWidth,
+        height: imageHeight,
+        transform: `translate(${transform[0]}px, ${transform[1]}px) scale(${transform[2]})`,
+      },
+    }).then(downloadImage);
+  };
+
   const Test = () => {
     setNodes((nodes) => {
       const id = Date.now()
@@ -89,6 +136,7 @@ const OverviewFlow = () => {
   }
     
   async function addNewNode(tab, prevNodeId) {
+    console.log("%cCREATING NEW NODE", "background-color: yellow; color: black");
     const id = Date.now()
     let x = 0;
     let y = await getMaxYPos() + 100;
@@ -122,6 +170,7 @@ const OverviewFlow = () => {
       tabs.set(tab.tabId, id)
       return nodes.concat(newNode)
     })
+    console.log("%cCREATING NEW NODE END", "background-color: green; color: black");
     return id;
   }
 
@@ -159,19 +208,22 @@ const OverviewFlow = () => {
   useEffect(() => {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.click) {
-        console.log("Clicked, inside vispage")
-        console.log(message.click.link)
+        console.log("%cClicked, inside vispage", 'background-color: black; color: red; font-size: 18px')
+        console.log(message.click)
+        //console.log(message.click.link)
         //console.log(message.click.href)
         return true;
       }
       if (message.auxClick) {
-        console.log("Aux clicked, inside vispage")
-        console.log(message.auxClick.link)
+        console.log("%cAux clicked, inside vispage", 'background-color: black; color: red; font-size: 18px')
+        console.log(message.auxClick)
+        //console.log(message.auxClick.link)
         //console.log(message.auxClick.href)
         return true;
       }
 
       if(message.newTab) {
+        console.log("%cNEW TAB", "background-color: yellow; color: black");
         (async () => {
           const existingNode = await getExistingNode(message.newTab.url)
           if(existingNode) {
@@ -180,6 +232,7 @@ const OverviewFlow = () => {
             addNewNode(message.newTab);
           }
         })();
+        console.log("%cNEW TAB END", "background-color: green; color: black");
       }
 
       if(message.newTabBranched) {
@@ -239,48 +292,66 @@ const OverviewFlow = () => {
           return newNodes
         })
       }
-    });
 
-    if(message.updatedTabFavicon) {
-      setNodes((nodes) => {
-        const nodeId = tabs.get(message.updatedTabFavicon.tabId);
-        //return nodes
-        const newNodes = nodes.map((node) => {
-          if(node.id === `${nodeId}`) {
-            node.data = {...node.data, favIconUrl: `${message.updatedTabFavicon.favIconUrl}`}
-          }
-          return node
+      if(message.updatedTabFavicon) {
+        console.log("setting faviconUrl");
+        setNodes((nodes) => {
+          console.log("debugging favIcon, tabId:")
+          console.log(message.updatedTabFavicon.tabId);
+          console.log("nodes:")
+          console.log(nodes);
+          console.log("tabs:")
+          console.log(tabs);
+          const nodeId = tabs.get(message.updatedTabFavicon.tabId);
+          console.log("nodeId:")
+          console.log(nodeId);
+          //return nodes
+          const newNodes = nodes.map((node) => {
+            if(node.id === `${nodeId}`) {
+              console.log("debugging faviconUrl, node.data:")
+              console.log(node.data);
+              node.data = {...node.data, favIconUrl: `${message.updatedTabFavicon.favIconUrl}`}
+            }
+            return node
+          })
+          chrome.storage.local.set({nodes: newNodes})
+          return newNodes
         })
-        chrome.storage.local.set({nodes: newNodes})
-        return newNodes
-      })
-    }
+      }
+    });
   }, [])
 
   return (
-    <div style={{ width: 1600, height: 900 }}>
-      <h1>Hyper History</h1>
-      {spacePressed ? <p>Space pressed!</p> : <p>Space not pressed.</p>}
-      {shiftPressed ? <p>Shift pressed!</p> : <p>Shift not pressed.</p>}
-      <button onClick={() => chrome.action.setBadgeText({text: "ON",})}>Start HyperHistory</button>
-      <button onClick={handleDownload}>Save node graph</button>
-      <button onClick={Test}>Test</button>
-      <ReactFlowProvider>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onInit={onInit}
-          fitView
-          attributionPosition="top-right"
-          nodeTypes={nodeTypes}
-        >
-          <MiniMap style={minimapStyle} zoomable pannable />
-          <Controls />
-          <Background color="#aaa" gap={16} />
-        </ReactFlow>
-      </ReactFlowProvider>
+    <div>
+      {hamburgerOpen && <Hamburger download={handleDownload} upload={"test"} saveImg={clickDownload}/>}
+      <div className="topbar">
+        <BiMenu onClick={() => setHamburgerOpen(!hamburgerOpen)} className="hamburger-icon"/>
+        <img className="logo" src="./images/logo.png"/>
+        <button onClick={() => chrome.action.setBadgeText({text: "ON",})}><BiRightArrow className="icon"/>Start HyperHistory</button>
+        <button onClick={handleDownload}><BiSave className="icon"/>Save node graph</button>
+        {spacePressed ? <p>Space pressed!</p> : <p>Space not pressed.</p>} 
+        {shiftPressed ? <p>Shift pressed!</p> : <p>Shift not pressed.</p>} 
+        <p>{width}</p> 
+        <p>{height}</p>
+      </div>
+      <div style={{width: width, height: height - 100}}>
+        <ReactFlowProvider>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onInit={onInit}
+            fitView
+            attributionPosition="top-right"
+            nodeTypes={nodeTypes}
+          >
+            <MiniMap style={minimapStyle} zoomable pannable />
+            <Controls />
+            <Background color="#aaa" gap={16} />
+          </ReactFlow>
+        </ReactFlowProvider>
+      </div>
     </div>
   );
 };

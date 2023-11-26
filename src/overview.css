@@ -70,3 +70,14 @@
   margin: none;
   padding: none;
 }
+
+.website_node_toprow {
+  display: flex;
+  flex-direction: row;
+}
+
+.website_node_favicon {
+  width: 20px;
+  height: 20px;
+  margin-right: 5px;
+}

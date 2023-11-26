@@ -8,7 +8,40 @@ let tabs = new Map();
 
 function cleanseURL(str) {
   const url = new URL(str)
-  return str;
+  let params = url.searchParams;
+  //console.log("    Inside cleanseURL")
+  //console.log("    url:")
+  //console.log(url)
+  //console.log("    params:")
+  //for(const param of params) {
+  //  console.log(param)
+  //}
+  let hostname = url.hostname;
+  let allowedParams = [];
+  let returnParams = new URLSearchParams();
+  /*if(url.hostname.startsWith("www.")) {
+    hostname = hostname.slice(4);
+  }*/
+
+  if(hostname == "www.google.com") {
+    allowedParams = ["q", "tbm", "tbs"]
+  } else if(hostname == "www.bing.com") {
+    allowedParams = ["q", "filters", "qft"]
+  }
+
+  for(const paramStr of allowedParams) {
+    if(params.has(paramStr)) {
+      returnParams.set(paramStr, params.get(paramStr))
+    }
+  }
+  let returnUrl = url.origin + url.pathname + "?"
+  for(const param of returnParams) {
+    returnUrl += param[0] + "=" + param[1] + "&";
+  }
+  returnUrl = encodeURI(returnUrl).slice(0, -1);
+  //console.log("returnUrl:")
+  //console.log(returnUrl)
+  return returnUrl;
 }
 
 /*chrome.browserAction.onClicked.addEventListener("click", async () => {
@@ -40,81 +73,79 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.click) {
-    console.log("Clicked")
+    console.log("%cClicked", 'background-color: black; color: red; font-size: 18px')
     console.log(message.click)
-    console.log(message.click.href)
     return true;
   }
   if (message.auxClick) {
-    console.log("Aux clicked")
+    console.log("%cAux clicked", 'background-color: black; color: red; font-size: 18px')
     console.log(message.auxClick)
-    console.log(message.auxClick.href)
+    return true;
+  }
+  if (message.bodyClick) {
+    console.log("%cBody clicked", 'background-color: black; color: red; font-size: 18px')
+    return true;
+  }
+  if (message.bodyAuxClick) {
+    console.log("%cBody aux clicked", 'background-color: black; color: red; font-size: 18px')
     return true;
   }
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
-  console.log("In service worker, tab created")
+  console.log("%cIn service worker, tab created", "background: black; color: white")
   console.log(tab)
-  tabs.set(tab.id, tab.pendingUrl);
-  //chrome.storage.local.set({tabId: url});
-  if(tab.pendingUrl !== "chrome://newtab/") {
-    console.log("New tab opened from another page <><><>")
-    //chrome.runtime.sendMessage({newTab: {tabId: tab.id, url: tab.pendingUrl, title: tab.title}})
-    chrome.runtime.sendMessage({newTabBranched: {tabId: tab.id, openerTabId: tab.openerTabId, url: tab.pendingUrl, title: tab.title}})
+  const url = cleanseURL(tab.pendingUrl);
+  tabs.set(tab.id, url);
+  if(url !== "chrome://newtab/") {
+    console.log("New tab opened from another page")
+    chrome.runtime.sendMessage({newTabBranched: {tabId: tab.id, openerTabId: tab.openerTabId, url: url, title: tab.title}})
   } else {
     console.log("New tab opened with ctrl + T")
   }
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if(tabId != '1963630908') {
-  console.log("In service worker, tab changed")
+  if(changeInfo.status === 'complete') chrome.runtime.sendMessage({pageLoaded: tabId});
+  console.log("%cIn service worker, tab changed", "background: black; color: yellow")
   console.log("Everything not null:")
   for(const [key, value] of Object.entries(changeInfo)) {
-    if(changeInfo[key] != null) console.log(`!- ${key}: ${value}`)
+    if(changeInfo[key] != null) console.log(`${key}: ${value}`)
   }
   //console.log("id: " + tabId + ", changeInfo title: " + changeInfo.title)
   //console.log("id: " + tabId + ", changeInfo url: " + changeInfo.url)
   console.log("id: " + tabId + ", tab title: " + tab.title)
   console.log("id: " + tabId + ", tab url: " + tab.url)
+  const url = cleanseURL(tab.url)
   //if(tabId in tabs.keys()) {
     if(changeInfo.url) {
       console.log("Tab changed url")
-      if(changeInfo.url !== "chrome://newtab/" /*&& changeInfo.url in tabs.values()*/) {
+      if(url !== "chrome://newtab/" /*&& changeInfo.url in tabs.values()*/) {
         console.log("Changing url is not a new tab, could be legit new tab")
         console.log(tabs)
         if(tabs.get(tabId) === "chrome://newtab/") {
           console.log("Changing from blank tab into real new tab, should send newTab to vispage")
           console.log(tabs.get(tabId) === "chrome://newtab/")
-          chrome.runtime.sendMessage({newTab: {tabId, url: tab.url, title: tab.title}})
-          tabs.set(tab.id, tab.url);
+          chrome.runtime.sendMessage({newTab: {tabId, url: url, title: tab.title}})
+          tabs.set(tab.id, url);
         } else /*if(!tabId in tabs.keys())*/ {
           console.log("Not changing from blank tab to first page, but should still update anyway")
-          chrome.runtime.sendMessage({changedTab: {tabId, url: tab.url, title: tab.title}})
-          tabs.set(tab.id, tab.url);
+          chrome.runtime.sendMessage({changedTab: {tabId, url: url, title: tab.title}})
+          tabs.set(tab.id, url);
         }
       }
-      /*if(tabs.get(tabId) === "chrome://newtab/") {
-        if(changeInfo.url !== "chrome://newtab/") {
-          console.log("Current url at tab ID is new tab, changeInfo.url is not new tab, so we're putting new tab on graph <><><>")
-          //chrome.runtime.sendMessage({newTab: {tabId, url: tab.url, title: tab.title}})
-        } else {
-          console.log("Not creating new tab or updating")
-        }
-      } else {
-        console.log("Updating tab instead")
-        chrome.runtime.sendMessage({changedTab: {tabId, url: tab.url, title: tab.title}})
-      }*/
-    } else if(changeInfo.title) {
-      console.log("Tab did not update url, updating title instead")
-      chrome.runtime.sendMessage({updatedTab: {tabId, title: tab.title}})
-    } else if(changeInfo.favIconUrl) {
-      console.log("Updating tab favIconUrl")
-      chrome.runtime.sendMessage({updatedTabFavicon: {tabId, favIconUrl: tab.favIconUrl}})
+    } else {
+      if(changeInfo.title) {
+        console.log("Tab did not update url, updating title instead")
+        chrome.runtime.sendMessage({updatedTab: {tabId, title: tab.title}})
+      }
+      if(changeInfo.favIconUrl) {
+        console.log("Updating tab favIconUrl")
+        chrome.runtime.sendMessage({updatedTabFavicon: {tabId, favIconUrl: tab.favIconUrl}})
+      }
     }
+      
   //} else {
   //  console.log("Changed tab was not created during session")
   //}
-  }
 })
