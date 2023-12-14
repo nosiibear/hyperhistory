@@ -10,16 +10,15 @@ import ReactFlow, {
   useKeyPress,
   useOnSelectionChange,
   ReactFlowProvider,
-  MarkerType,
-  useReactFlow
 } from 'reactflow';
+import { saveAs } from 'file-saver';
+import { toPng } from 'html-to-image'
 import { BiMenu, BiSave, BiUpload, BiPause, BiRightArrow } from "react-icons/bi";
 
 /*import { nodes as initialNodes, edges as initialEdges } from './initial-elements';*/
 /*import CustomNode from './CustomNode';*/
 import WebNode from './nodes/WebNode.jsx'
 import WebNodeImage from './nodes/WebNodeImage.jsx'
-import AnnotateNode from './nodes/AnnotateNode.jsx';
 import Hamburger from './components/Hamburger.jsx';
 import ResetWarning from './components/ResetWarning.jsx'
 
@@ -36,7 +35,6 @@ import './overview.css';
 const nodeTypes = {
   webNode: WebNode,
   webNodeImage: WebNodeImage,
-  annotateNode: AnnotateNode
 };
 
 const minimapStyle = {
@@ -58,8 +56,23 @@ function useWindowSize() {
   return size;
 }
 
+const onPaneContextMenu = (event) => {
+  event.preventDefault();
+  console.log("onPaneContextMenu", event);
+}
 
-const App = () => {
+const onNodeDoubleClick = (event) => {
+  console.log("onNodeDoubleClick", event);
+}
+
+const onNodeContextMenu = (event) => {
+  event.preventDefault();
+  console.log("onNodeContextMenu", event);
+}
+
+
+
+const OverviewFlow = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNodes, setSelectedNodes] = useState([]);
@@ -69,7 +82,6 @@ const App = () => {
 
   const [hamburgerOpen, setHamburgerOpen] = useState(false);
   const [resetWarningOpen, setResetWarningOpen] = useState(false);
-  const [flow, setFlow] = useState(null);
 
   const [logging, setLogging] = useState(true);
   const loggingRef = useRef(logging);
@@ -79,68 +91,27 @@ const App = () => {
   }
   const [height, width] = useWindowSize();
   const tabsRef = useRef(new Map());
-  const { screenToFlowPosition } = useReactFlow()
-
-  const onPaneClick = (event) => {
-    console.log("onPaneClick", event);
-  }
-
-  const onPaneContextMenu = (event, node) => {
-    event.preventDefault();
-    console.log("onPaneContextMenu", event);
-    const boundingBox = event.target.getBoundingClientRect();
-    const viewport_x = event.pageX - boundingBox.left;
-    const viewport_y = event.pageY - boundingBox.top;
-    const returnPos = flow.screenToFlowPosition({ x: viewport_x, y: viewport_y });
-    console.log("returnPos", returnPos)
-    setNodes((nodes) => {
-      const id = Date.now()
-      const newNode = {
-        id: `${id}`,
-        type: 'annotateNode',
-        position: returnPos,
-        style: {width: 150, height: 100},
-        data: {text: "", setNodes: setNodes}
-      };
-      chrome.storage.local.set({nodes: [...nodes, newNode]})
-      return nodes.concat(newNode)
-    })
-    console.log("fail 4")
-  }
-
-  const onNodeClick = async (event) => {
-    console.log("onNodeClick", event);
-    const retrievedNodes = await chrome.storage.local.get('nodes');
-    console.log(retrievedNodes)
-  }
-
-  const onNodeDoubleClick = (event) => {
-    console.log("onNodeDoubleClick", event);
-  }
-
-  const onNodeContextMenu = (event) => {
-    event.preventDefault();
-    console.log("onNodeContextMenu", event);
-  }
 
   const onInit = (reactFlowInstance) => {
     console.log('flow loaded:', reactFlowInstance)
-    setFlow(reactFlowInstance);
   };
+
+  /*useOnSelectionChange({
+    onChange: ({nodes, edges}) => {
+      setSelectedNodes(nodes.map((node) => node.id));
+      setSelectedEdges(edges.map((edge) => edge.id))
+    }
+  });*/
+
+  //useEffect(() => {
+  //  
+  //}), []
 
   useEffect(() => {
     async function fetchPrevNodes() {
       const retrievedNodes = await chrome.storage.local.get('nodes');
       if(retrievedNodes.nodes != null) {
-        setNodes((nodes) => {
-          const returnNodes = retrievedNodes.nodes.map((node) => {
-            if(node.type == 'annotateNode') {
-              node.data.setNodes = setNodes;
-            }
-            return node
-          })
-          return nodes.concat(returnNodes)
-        })
+        setNodes((nodes) => nodes.concat(retrievedNodes.nodes))
       }
       const retrievedEdges = await chrome.storage.local.get('edges');
       if(retrievedEdges.edges != null) {
@@ -172,31 +143,47 @@ const App = () => {
   async function addNewNode(tab, prevNodeId) {
     console.log("%cCREATING NEW NODE", "background-color: yellow; color: black");
     console.log(`%cprevNodeId: ${prevNodeId}`, "background-color: yellow; color: black");
+    fetch(tab.url, {method:'HEAD'}).then((res) => {
+      res.blob().then((res2) => {
+        const resType = res2.type.startsWith('image/');
+        console.log("RES TYPE");
+        console.log(tab.url);
+        console.log(resType);
+        if(resType) {
+          setNodes((nodes) => {
+            //return nodes
+            const newNodes = nodes.map((node) => {
+              if(node.id === `${tab.id}`) {
+                node.data = {...node.data, 'type': 'webNodeImage'}
+              }
+              return node
+            })
+            chrome.storage.local.set({nodes: newNodes})
+            console.log(nodes);
+            return newNodes
+          })
+        }
+      })
+    });
     const id = Date.now()
     let x = 0;
     let y = await getNewNodePos() + 100;
     let type = "webNode";
     const tempEdges = await chrome.storage.local.get('edges');
-    console.log("tempEdges", tempEdges);
-    const header = await fetch(tab.url, {method:'HEAD'})
-    if(header) {
-      const blobres = header.blob()
-      if(blobres) {
-        if((await blobres).type.startsWith('image/')) {
-          console.log("SUCCESS, SETTING TYPE TO WEBNODEIMAGE")
-          type = 'webNodeImage'
-        }
-      }
-    }
+    console.log("tempEdges");
+    console.log(tempEdges);
     setNodes((nodes) => {
       let prevNode = "";
       let data = {title: tab.title, url: tab.url}
       if(prevNodeId) {
         prevNode = nodes.find((node) => node.id === `${prevNodeId}`)
         console.log(`%cprevNode: ${prevNode}`, "background-color: yellow; color: black");
-        if(tab.url.startsWith("https://upload.wikimedia.org/") && (tab.url.endsWith(".png") || tab.url.endsWith(".jpg"))) {
-          type = "webNodeImage"
-        }
+        //if(tab.url.endsWith(".png") || tab.url.endsWith(".jpg")) {
+        //  type = "webNodeImage"
+        //  data = {imgUrl: tab.url}
+        //} else {
+          data = {...data, input: true}
+        //}
         let count = 0;
         let maxYPos = 0;
         let xPos = 0;
@@ -244,34 +231,9 @@ const App = () => {
       tabsRef.current.set(tab.tabId, id)
       //console.log("after setting tabs")
       //console.log(tabs)
-      console.log("%cRIGHT BEFORE SETNODES END", "background-color: green; color: black");
+      console.log("%cSETNODES END", "background-color: green; color: black");
       //chrome.runtime.sendMessage({nodeReady: tab.tabId});
       chrome.runtime.sendMessage({nodeReady: tab.url});
-      fetch(tab.url, {method:'HEAD'}).then((res) => {
-        res.blob().then((res2) => {
-          const resType = res2.type.startsWith('image/');
-          console.log("RES TYPE");
-          console.log(tab.url);
-          console.log(tab.tabId)
-          console.log(resType);
-          if(resType) {
-            /*setNodes((nodes) => {
-              //return nodes
-              const newNodes = nodes.map((node) => {
-                if(node.id === `${tab.tabId}`) {
-                  node.data = {...node.data, 'type': 'webNodeImage'}
-                }
-                return node
-              })
-              chrome.storage.local.set({nodes: newNodes})
-              console.log(nodes);
-              return newNodes
-            })*/
-            //chrome.runtime.sendMessage({updatedTabInfo: {url: tab.url, 'type': 'webNodeImage'}})
-          }
-        })
-      });
-      console.log("%cSETNODES END", "background-color: green; color: black");
       return nodes.concat(newNode)
     })
     console.log("%cCREATING NEW NODE END", "background-color: green; color: black");
@@ -284,7 +246,7 @@ const App = () => {
     console.log(tempNodes);
     if(tempNodes.nodes) {
       for (const node of tempNodes.nodes) {
-        if(node.data != null && url === node.data.url) {
+        if(url === node.data.url) {
           return node;
         }
       }
@@ -355,9 +317,7 @@ const App = () => {
         console.log(logging);
         return;
       }
-      console.log("message:")
-      console.log(message)
-      /*if (message) {
+      if (message.click) {
         console.log("%cClicked, inside vispage", 'background-color: black; color: red; font-size: 18px')
         console.log(message.click)
         //console.log(message.click.link)
@@ -370,7 +330,7 @@ const App = () => {
         //console.log(message.auxClick.link)
         //console.log(message.auxClick.href)
         return true;
-      }*/
+      }
 
       if(message.newTab) {
         console.log("%cNEW TAB", "background-color: yellow; color: black");
@@ -378,19 +338,7 @@ const App = () => {
           const existingNode = await getExistingNode(message.newTab.url)
           if(existingNode) {
             //tabs.set(message.newTab.tabId, existingNode.id)
-            const currentNodeId = await tabsRef.current.get(message.newTab.tabId)
-            console.log("in newTab, fetched currentNodeId:")
-            console.log(currentNodeId)
-            tabsRef.current.set(tabId, existingNode.id)
-            setEdges((edges) => {
-              const parentEdge = edges.find((edge) => edge.source == existingNode.id && edge.target == currentNodeId);
-              if(!parentEdge) {
-                const edge = {source: `${currentNodeId}`, target: `${existingNode.id}`, markerEnd: {type: MarkerType.ArrowClosed}}
-                chrome.storage.local.set({edges: [...edges, edge]})
-                return edges.concat(edge)
-              }
-              return edges
-            });
+            tabsRef.current.set(message.newTab.tabId, existingNode.id);
           } else {
             console.log("%cAdded new node from new tab", "color: blue");
             addNewNode(message.newTab);
@@ -405,19 +353,7 @@ const App = () => {
           const existingNode = await getExistingNode(message.newTabBranched.url)
           if(existingNode) {
             //tabs.set(message.newTabBranched.tabId, existingNode.id)
-            const currentNodeId = await tabsRef.current.get(message.newTabBranched.tabId)
-            console.log("in newTabBranched, fetched currentNodeId:")
-            console.log(currentNodeId)
-            tabsRef.current.set(tabId, existingNode.id)
-            setEdges((edges) => {
-              const parentEdge = edges.find((edge) => edge.source == existingNode.id && edge.target == currentNodeId);
-              if(!parentEdge) {
-                const edge = {source: `${currentNodeId}`, target: `${existingNode.id}`, markerEnd: {type: MarkerType.ArrowClosed}}
-                chrome.storage.local.set({edges: [...edges, edge]})
-                return edges.concat(edge)
-              }
-              return edges
-            });
+            tabsRef.current.set(message.newTabBranched.tabId, existingNode.id)
           } else {
             //const openerNodeId = tabs.get(message.newTabBranched.openerTabId)
             const openerNodeId = tabsRef.current.get(message.newTabBranched.openerTabId);
@@ -426,7 +362,7 @@ const App = () => {
             console.log("%cAdded new node from new tab branched", "color: blue");
             const newNodeId = await addNewNode(message.newTabBranched, openerNodeId);
             setEdges((edges) => {
-              const edge = {source: `${openerNodeId}`, target: `${newNodeId}`, markerEnd: {type: MarkerType.ArrowClosed}}
+              const edge = {source: `${openerNodeId}`, target: `${newNodeId}`}
               chrome.storage.local.set({edges: [...edges, edge]})
               return edges.concat(edge)
             });
@@ -451,26 +387,14 @@ const App = () => {
           console.log(nodeId);
           if(existingNode) {
             //tabs.set(tabId, existingNode.id)
-            const currentNodeId = await tabsRef.current.get(message.changedTab.tabId)
-            console.log("in changedTab, fetched currentNodeId:")
-            console.log(currentNodeId)
             tabsRef.current.set(tabId, existingNode.id)
-            setEdges((edges) => {
-              const parentEdge = edges.find((edge) => edge.source == existingNode.id && edge.target == currentNodeId);
-              if(!parentEdge) {
-                const edge = {source: `${currentNodeId}`, target: `${existingNode.id}`, markerEnd: {type: MarkerType.ArrowClosed}}
-                chrome.storage.local.set({edges: [...edges, edge]})
-                return edges.concat(edge)
-              }
-              return edges
-            });
           } else if(nodeId) {
             console.log("%cAdded new node from changed tab", "color: blue");
             const newNodeId = await addNewNode(message.changedTab, nodeId)
             //tabs.set(tabId, newNodeId)
             tabsRef.current.set(tabId, newNodeId)
             setEdges((edges) => {
-              const edge = {source: `${nodeId}`, target: `${newNodeId}`, markerEnd: {type: MarkerType.ArrowClosed}}
+              const edge = {source: `${nodeId}`, target: `${newNodeId}`}
               chrome.storage.local.set({edges: [...edges, edge]})
               /*chrome.storage.local.get('edges', (res) => {
                 console.log("changedTab edges chrome storage: ")
@@ -482,18 +406,54 @@ const App = () => {
         })();
       }
 
+      if(message.updatedTab) {
+        console.log("In vispage, updated tab")
+        setNodes((nodes) => {
+          //const nodeId = tabs.get(message.updatedTab.tabId);
+          const nodeId = tabsRef.current.get(message.updatedTab.tabId);
+          //return nodes
+          const newNodes = nodes.map((node) => {
+            if(node.id === `${nodeId}`) {
+              node.data = {...node.data, title: `${message.updatedTab.title}`}
+            }
+            return node
+          })
+          chrome.storage.local.set({nodes: newNodes})
+          return newNodes
+        })
+      }
+
+      if(message.updatedTabFavicon) {
+        console.log("In vispage, updated faviconUrl");
+        setNodes((nodes) => {
+          console.log("nodes");
+          console.log(nodes);
+          //const nodeId = tabs.get(message.updatedTabFavicon.tabId);
+          const nodeId = tabsRef.current.get(message.updatedTabFavicon.tabId);
+          //return nodes
+          const newNodes = nodes.map((node) => {
+            if(node.id === `${nodeId}`) {
+              node.data = {...node.data, favIconUrl: `${message.updatedTabFavicon.favIconUrl}`}
+            }
+            return node
+          })
+          chrome.storage.local.set({nodes: newNodes})
+          return newNodes
+        })
+      }
+      
+      if(message.bodyClick) {
+        //console.log(tabs);
+      }
+
       if(message.updatedTabInfo) {
         console.log("In vispage, new updated tab queue method")
         console.log(message.updatedTabInfo);
         const data = message.updatedTabInfo.data;
+        console.log("Updated tab data:")
+        console.log(data);
         setNodes((nodes) => {
-          console.log("updatedTabInfo nodes:")
-          console.log(nodes)
-          const existingNode = nodes.find((node) => {
-            return node.data != null && node.data.url === message.updatedTabInfo.url
-          })
-          const nodeId = existingNode.id
-          //const nodeId = tabsRef.current.get(message.updatedTabInfo.tabId);
+          const nodeId = tabsRef.current.get(message.updatedTabInfo.tabId);
           //return nodes
           const newNodes = nodes.map((node) => {
             if(node.id === `${nodeId}`) {
@@ -502,7 +462,6 @@ const App = () => {
             return node
           })
           chrome.storage.local.set({nodes: newNodes})
-          chrome.runtime.sendMessage({nextInput: message.updatedTabInfo.url});
           return newNodes
         })
       }
@@ -521,14 +480,13 @@ const App = () => {
         }
       </div>
       <div style={{width: width, height: height}}>
+        <ReactFlowProvider>
           <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onInit={onInit}
-            onNodeClick={onNodeClick}
-            onPaneClick={onPaneClick}
             onPaneContextMenu={onPaneContextMenu}
             onNodeDoubleClick={onNodeDoubleClick}
             onNodeContextMenu={onNodeContextMenu}
@@ -551,17 +509,10 @@ const App = () => {
               setResetWarningOpen={setResetWarningOpen}
             />}
           </ReactFlow>
+        </ReactFlowProvider>
       </div>
     </div>
   );
 };
 
-function AppWithProvider() {
-  return (
-    <ReactFlowProvider>
-      <App/>
-    </ReactFlowProvider>
-  )
-}
-
-export default AppWithProvider;
+export default OverviewFlow;

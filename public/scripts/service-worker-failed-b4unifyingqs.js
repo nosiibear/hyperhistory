@@ -5,13 +5,13 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 let vispageId, vispageWinId = null;
-let vispageActive = false
 //let vispageBlacklist = []
 let tabs = new Map();
 let deactivatedTabs = new Map();
 let urlInfoPools = new Map();
 let urlsWaiting = new Map();
 let messageQueue = []
+let vispageActive = false
 
 /*chrome.browserAction.onClicked.addEventListener("click", async () => {
   chrome.tabs.create({ url: chrome.runtime.getURL("./index.html") });
@@ -36,77 +36,89 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
   console.log("Inside onActive listener")
-  if(activeInfo.tabId == vispageId) {
-    console.log("Hyper History is active, sending trigger message")
-    vispageActive = true
-    vispageWinId = activeInfo.windowId
-    sendMsg()
-  } else {
-    if(activeInfo.windowId == vispageWinId) {
+  if(activeInfo.windowId == vispageWinId) {
+    if(activeInfo.tabId == vispageId) {
+      console.log("Hyper History is active, sending trigger message")
+      vispageActive = true
+      sendMsg()
+    } else {
       console.log("Hyper History is no longer active")
       vispageActive = false
     }
   }
-  console.log("vispageActive:")
   console.log(vispageActive)
 });
 
 function sendMsg(msg) {
+  console.log("msg")
+  console.log(msg)
   console.log("messageQueue")
   console.log(messageQueue)
   if(msg) {
-    console.log("msg")
-    console.log(msg)
-    const newSize = messageQueue.push(msg)
-    console.log("new messageQueue length")
-    console.log(newSize)
-    console.log("messageQueue after push")
-    console.log(messageQueue)
+    messageQueue.push(msg)
   }
-  if(vispageActive && messageQueue.length > 0) {
-    msg = messageQueue.shift();
-    console.log("sending message:")
-    console.log(msg)
-    chrome.runtime.sendMessage(msg)
+  console.log(messageQueue)
+  if(vispageActive) {
+    while(messageQueue.length > 0) {
+      msg = messageQueue.shift();
+      chrome.runtime.sendMessage(msg)
+    }
   }
 }
 
 function cleanseURL(str) {
   const url = new URL(str)
   let params = url.searchParams;
-  console.log("    Inside cleanseURL")
-  console.log("    url:")
-  console.log(url)
-  console.log("    params:")
-  for(const param of params) {
-    console.log(param)
-  }
+  //console.log("    Inside cleanseURL")
+  //console.log("    url:")
+  //console.log(url)
+  //console.log("    params:")
+  //for(const param of params) {
+  //  console.log(param)
+  //}
   let hostname = url.hostname;
   let allowedParams = [];
   let returnParams = new URLSearchParams();
   /*if(url.hostname.startsWith("www.")) {
     hostname = hostname.slice(4);
   }*/
+
   if(hostname == "www.google.com") {
     allowedParams = ["q", "tbm", "tbs"]
   } else if(hostname == "www.bing.com") {
     allowedParams = ["q", "filters", "qft"]
   }
+
   for(const paramStr of allowedParams) {
     if(params.has(paramStr)) {
       returnParams.set(paramStr, params.get(paramStr))
     }
   }
-  let returnUrl = url.origin + url.hash + url.pathname
-  let paramStr = "?"
+  let returnUrl = url.origin + url.pathname + "?"
   for(const param of returnParams) {
-    paramStr += param[0] + "=" + param[1] + "&";
+    returnUrl += param[0] + "=" + param[1] + "&";
   }
-  returnUrl += encodeURI(paramStr).slice(0, -1);
-  console.log("returnUrl:")
-  console.log(returnUrl)
+  returnUrl = encodeURI(returnUrl).slice(0, -1);
+  //console.log("returnUrl:")
+  //console.log(returnUrl)
   return returnUrl;
 }
+/*chrome.commands.onCommand.addListener(async (command) => {
+  console.log(`Command: ${command}`);
+  if(command == "test") {
+    console.log("command is test")
+    const url = await chrome.runtime.getURL("pages/vispage.html")
+    console.log("url: " + url)
+    const tab = await chrome.tabs.query({url: chrome.runtime.getURL("pages/vispage.html")})
+    console.log(tab)
+    if(tab.length > 0) {
+      console.log("tab > 0")
+    } else {
+      console.log("tab = 0")
+      chrome.tabs.create({ url: chrome.runtime.getURL("./pages/vispage.html") });
+    }
+  }
+});*/
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.click) {
@@ -135,16 +147,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.nodeReady) {
     const url = message.nodeReady;
     //console.log(`%cNode ready, tab id: ${tabId}`, 'background-color: green; color: white')
-    console.log(`%cNode ready, tab url: ${url}`, 'background-color: green; color: white')
+    console.log(`%cNode ready, tab id: ${url}`, 'background-color: green; color: white')
     //chrome.runtime.sendMessage({updatedTabInfo: {tabId, data: tabInfoPools.get(message.nodeReady)}})
-    //chrome.runtime.sendMessage({updatedTabInfo: {url: url, data: urlInfoPools.get(message.nodeReady)}})
-    sendMsg({updatedTabInfo: {url: url, data: urlInfoPools.get(message.nodeReady)}});
+    sendMsg({updatedTabInfo: {url: url, data: urlInfoPools.get(message.nodeReady)}})
     urlsWaiting.delete(message.nodeReady);
     urlInfoPools.delete(message.nodeReady);
-  }
-  if (message.nextInput) {
-    console.log("got signal for next input, url: " + message.nextInput.url)
-    sendMsg();
   }
 });
 
@@ -170,57 +177,62 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
   console.log("id: " + tabId + ", tab title: " + tab.title)
   console.log("id: " + tabId + ", tab url: " + tab.url)
-  const cleanUrl = cleanseURL(tab.url)
-  console.log("cleanURL:")
-  console.log(cleanUrl)
-  if(!cleanUrl.startsWith("chrome")) {
+  const url = cleanseURL(tab.url)
+  console.log(url)
+  console.log(url.startsWith("chrome"))
+  if(!url.startsWith("chrome")) {
     if(changeInfo.url) {
       console.log("Tab changed url")
-      console.log("Changing url is not a new tab, could be legit new tab")
-      console.log(tabs)
-
-      if(tabs.get(tabId) === "chrome://newtab/") {
-        console.log("%cChanging from blank new tab to real new tab, sending to vis page", "background: black; color: white")
-        sendMsg({newTab: {tabId, url: cleanUrl, title: tab.title}})
-
-      } else if(deactivatedTabs.has(tabId)) {
-        console.log('Turning a "cleared" tab back into a real one')
-        sendMsg({newTab: {tabId, url: cleanUrl, title: tab.title}})
-        deactivatedTabs.delete(tab.id);
-
-      } else {
-        console.log("Tab is changing urls, sending to vis page")
-        sendMsg({changedTab: {tabId, url: cleanUrl, title: tab.title}})
-      }
-      tabs.set(tab.id, cleanUrl);
-      urlsWaiting.set(cleanUrl, true);
+        console.log("Changing url is not a new tab, could be legit new tab")
+        console.log(tabs)
+        if(tabs.get(tabId) === "chrome://newtab/") {
+          console.log("%cChanging from blank new tab to real new tab, sending to vis page", "background: black; color: white")
+          //chrome.runtime.sendMessage({newTab: {tabId, url: url, title: tab.title}})
+          sendMsg({newTab: {tabId, url: url, title: tab.title}})
+          tabs.set(tab.id, url);
+          urlsWaiting.set(tab.url, true);
+        } else if(deactivatedTabs.has(tabId)) {
+          console.log('Turning a "cleared" tab back into a real one')
+          //chrome.runtime.sendMessage({newTab: {tabId, url: url, title: tab.title}})
+          sendMsg({newTab: {tabId, url: url, title: tab.title}})
+          deactivatedTabs.delete(tab.id);
+          tabs.set(tab.id, url);
+          urlsWaiting.set(tab.url, true);
+        } else {
+          console.log("Not changing from blank tab to first page, but should still update anyway")
+          //chrome.runtime.sendMessage({changedTab: {tabId, url: url, title: tab.title}})
+          sendMsg({changedTab: {tabId, url: url, title: tab.title}})
+          tabs.set(tab.id, url);
+          urlsWaiting.set(tab.url, true);
+        }
     } else {
       if(changeInfo.status == 'loading' && deactivatedTabs.has(tab.id)) {
         console.log('Turning a "cleared" tab back into a real one, probably via f5')
         //chrome.runtime.sendMessage({newTab: {tabId, url: url, title: tab.title}})
-        sendMsg({newTab: {tabId, url: cleanUrl, title: tab.title}})
+        sendMsg({newTab: {tabId, url: url, title: tab.title}})
         deactivatedTabs.delete(tab.id);
-        tabs.set(tab.id, cleanUrl);
+        tabs.set(tab.id, url);
       // If we aren't sending a new tab or changed tab to vispage, then we're updating
       // info instead; because making a new node takes a while, we have to stash all of the
       // changed info, waiting for a signal back that the node is finished being made
       } else {
         console.log("Tab changed, but we're only updating tab info");
         const {url, status, ...leftoverInfo} = changeInfo;
-        if(urlsWaiting.has(cleanUrl)) {
+        if(urlsWaiting.has(tab.url)) {
           console.log("Tab is waiting, adding info to pool instead of sending");
-          if(!urlInfoPools.has(cleanUrl)) {
-            urlInfoPools.set(cleanUrl, {});
+          if(!urlInfoPools.has(tab.url)) {
+            urlInfoPools.set(tab.url, {});
           }
-          urlInfoPools.set(cleanUrl, {...urlInfoPools.get(cleanUrl), ...leftoverInfo})
+          urlInfoPools.set(tab.url, {...urlInfoPools.get(tab.url), ...leftoverInfo})
           console.log("urlInfoPools")
           console.log(urlInfoPools)
           console.log("urlsWaiting")
           console.log(urlsWaiting)
         } else {
           console.log("Tab is not waiting, sending update info instead");
+          const url = tab.url
           //chrome.runtime.sendMessage({updatedTabInfo: {tabId, data: leftoverInfo}});
-          sendMsg({updatedTabInfo: {url: cleanUrl, data: leftoverInfo}});
+          sendMsg({updatedTabInfo: {url: url, data: leftoverInfo}});
         }
       }
     }
@@ -239,9 +251,3 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
     //vispageBlacklist.push(tabId)
   }
 });
-
-//chrome.windows.onCreated.addListener((window) => {
-//  if(tabId == vispageId) {
-//    vispageWinId = window.id
-//  }
-//})
